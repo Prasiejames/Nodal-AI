@@ -57,10 +57,11 @@ export class PayFiAgent {
   private x402Tool: X402PaymentTool;
 
   constructor() {
-    // Pass the secret via agentKeypair() — tools call this internally
-    this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
-    this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
-    this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
+    // Pass Keypair objects directly to tools
+    const keypair = config.agentKeypair();
+    this.paymentTool = new StellarPaymentTool(keypair);
+    this.sorobanTool = new SorobanInvokeTool(keypair);
+    this.x402Tool    = new X402PaymentTool(keypair);
 
     // Log only safe fields — public key is derived, not the secret
     console.log(`🤖 PayFiAgent initialised`);

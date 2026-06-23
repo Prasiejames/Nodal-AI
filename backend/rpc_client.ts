@@ -6,7 +6,7 @@
 
 import {
   Horizon,
-  SorobanRpc,
+  rpc,
   Transaction,
   FeeBumpTransaction,
 } from "@stellar/stellar-sdk";
@@ -50,7 +50,7 @@ export async function submitTransaction(tx: Transaction | FeeBumpTransaction) {
 
 // ─── Soroban RPC client ───────────────────────────────────────────────────────
 
-export const sorobanServer = new SorobanRpc.Server(config.SOROBAN_RPC_URL, {
+export const sorobanServer = new rpc.Server(config.SOROBAN_RPC_URL, {
   allowHttp: config.STELLAR_NETWORK !== "mainnet",
 });
 
@@ -69,9 +69,9 @@ export async function simulateSorobanTx(tx: Transaction) {
 export async function prepareSorobanTx(tx: Transaction): Promise<Transaction> {
   const simResult = await simulateSorobanTx(tx);
 
-  if (SorobanRpc.Api.isSimulationError(simResult)) {
-    throw new Error(`Soroban simulation failed: ${simResult.error}`);
+  if (rpc.Api.isSimulationError(simResult)) {
+    throw new Error(`Soroban simulation failed: ${(simResult as any).error}`);
   }
 
-  return SorobanRpc.assembleTransaction(tx, simResult).build();
+  return rpc.assembleTransaction(tx, simResult).build();
 }

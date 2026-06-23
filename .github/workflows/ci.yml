@@ -4,52 +4,65 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
-    name: Build TypeScript
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm install
-      - run: npm run build
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
 
   lint:
-    name: Lint
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm install
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
       - run: npm run lint
 
   test:
-    name: Test TypeScript
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm install
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
       - run: npm run test
 
   test-rust:
-    name: Test Rust Contracts
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          override: true
-      - run: cargo test --manifest-path contracts/escrow/Cargo.toml
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path contracts/escrow/Cargo.toml

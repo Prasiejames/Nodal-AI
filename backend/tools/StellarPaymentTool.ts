@@ -37,8 +37,14 @@ export class StellarPaymentTool {
   private keypair: Keypair;
   private networkPassphrase: string;
 
-  constructor(secretKey: string = config.AGENT_SECRET_KEY) {
-    this.keypair = Keypair.fromSecret(secretKey);
+  constructor(keypairOrSecret?: Keypair | string) {
+    if (keypairOrSecret instanceof Keypair) {
+      this.keypair = keypairOrSecret;
+    } else if (typeof keypairOrSecret === 'string') {
+      this.keypair = Keypair.fromSecret(keypairOrSecret);
+    } else {
+      this.keypair = config.agentKeypair();
+    }
     this.networkPassphrase =
       config.STELLAR_NETWORK === "mainnet"
         ? Networks.PUBLIC

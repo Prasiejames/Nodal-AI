@@ -64,7 +64,9 @@ export class PayFiAgent extends EventEmitter {
   constructor() {
     super();
 
-    // Pass the secret via agentKeypair() — the canonical accessor for the signing key.
+    // config.agentKeypair().secret() is the canonical way to obtain the signing secret.
+    // Direct access to config.AGENT_SECRET_KEY is intentionally blocked by the AgentConfig
+    // type (Omit<RawEnv, "AGENT_SECRET_KEY">); using agentKeypair() makes the access explicit.
     this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
     this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
     this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());

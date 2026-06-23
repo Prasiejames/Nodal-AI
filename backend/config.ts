@@ -222,3 +222,10 @@ function loadConfig(): AgentConfig {
 
 // ─── Singleton — validated once at import time ────────────────────────────────
 export const config: AgentConfig = loadConfig();
+
+// ─── Compile-time encapsulation guard ────────────────────────────────────────
+// AgentConfig intentionally omits AGENT_SECRET_KEY via Omit<RawEnv, "AGENT_SECRET_KEY">.
+// The line below must remain a type error; if tsc stops complaining here the
+// Omit contract has been broken and the secret is leaking onto the public type.
+// @ts-expect-error — AGENT_SECRET_KEY must NOT be accessible on AgentConfig
+void (config.AGENT_SECRET_KEY satisfies never);

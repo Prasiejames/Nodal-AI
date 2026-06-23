@@ -26,10 +26,10 @@ export const PaymentInputSchema = z.object({
   destination: z.string().length(56, "Invalid Stellar public key"),
   amount: z
     .string()
-    .regex(/^\d+(\.\d{1,7})?$/, "Amount must be a valid Stellar decimal")
-    .refine((val) => parseFloat(val) > 0, {
-      message: "Amount must be a valid Stellar decimal (greater than zero)",
-    }),
+    // Negative-lookahead rejects "0" and all zero-value decimals ("0.0", "0.0000000")
+    .regex(/^(?!0(\.0+)?$)\d+(\.\d{1,7})?$/, "Amount must be a valid Stellar decimal")
+    // Belt-and-suspenders guard: parseFloat catches any edge cases the regex misses
+    .refine((v) => parseFloat(v) > 0, "Amount must be greater than zero"),
   assetCode: z.string().default("XLM"),
   assetIssuer: z.string().optional(),
   memo: z.string().max(28).optional(),
@@ -43,14 +43,8 @@ export class StellarPaymentTool {
   private keypair: Keypair;
   private networkPassphrase: string;
 
-  constructor(keypairOrSecret?: Keypair | string) {
-    if (keypairOrSecret instanceof Keypair) {
-      this.keypair = keypairOrSecret;
-    } else if (typeof keypairOrSecret === 'string') {
-      this.keypair = Keypair.fromSecret(keypairOrSecret);
-    } else {
-      this.keypair = config.agentKeypair();
-    }
+  constructor(secretKey: string = config.agentKeypair().secret()) {
+    this.keypair = Keypair.fromSecret(secretKey);
     this.networkPassphrase =
       config.STELLAR_NETWORK === "mainnet"
         ? Networks.PUBLIC

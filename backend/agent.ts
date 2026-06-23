@@ -10,6 +10,7 @@
  *   - The spending limit is enforced here before delegating to tools.
  */
 
+import { EventEmitter } from "events";
 import { config } from "./config";
 import { StellarPaymentTool } from "./tools/StellarPaymentTool";
 import { SorobanInvokeTool } from "./tools/SorobanInvokeTool";
@@ -47,21 +48,54 @@ function assertWithinSpendingLimit(amount: unknown): void {
       `AGENT_SPENDING_LIMIT of ${config.AGENT_SPENDING_LIMIT}`
     );
   }
+  if (!isNaN(parsed) && config.STELLAR_NETWORK === "mainnet" && parsed > MAINNET_SPENDING_CAP) {
+    throw new Error(
+      `Payment amount ${amount} ${config.X402_ASSET_CODE} exceeds ` +
+      `mainnet spending cap of ${MAINNET_SPENDING_CAP}`
+    );
+  }
 }
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
-export class PayFiAgent {
+export class PayFiAgent extends EventEmitter {
   private paymentTool: StellarPaymentTool;
   private sorobanTool: SorobanInvokeTool;
   private x402Tool: X402PaymentTool;
 
+  // Bound handler references kept so destroy() can call .off() with the exact same function
+  // reference — EventEmitter requires identity equality for removal.
+  private readonly _boundHandlers = new Map<string, (...args: unknown[]) => void>();
+
   constructor() {
-    // Pass Keypair objects directly to tools
-    const keypair = config.agentKeypair();
-    this.paymentTool = new StellarPaymentTool(keypair);
-    this.sorobanTool = new SorobanInvokeTool(keypair);
-    this.x402Tool    = new X402PaymentTool(keypair);
+    super();
+
+    // config.agentKeypair().secret() is the canonical way to obtain the signing secret.
+    // Direct access to config.AGENT_SECRET_KEY is intentionally blocked by the AgentConfig
+    // type (Omit<RawEnv, "AGENT_SECRET_KEY">); using agentKeypair() makes the access explicit.
+    this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
+    this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
+    this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
+
+    // ── Register event listeners — every registration is mirrored in destroy() ──
+    const onError = (err: Error) => {
+      const safe = err.message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
+      console.error(`❌ [PayFiAgent] Unhandled agent error: ${safe}`);
+    };
+    const onTaskComplete = (result: AgentResult) => {
+      console.log(`✅ [PayFiAgent] Task complete event: ${result.taskType}`);
+    };
+    const onTaskFailed = (result: AgentResult) => {
+      console.warn(`⚠️  [PayFiAgent] Task failed event: ${result.taskType} — ${result.error}`);
+    };
+
+    this.on("error", onError);
+    this.on("task:complete", onTaskComplete);
+    this.on("task:failed", onTaskFailed);
+
+    this._boundHandlers.set("error", onError as (...args: unknown[]) => void);
+    this._boundHandlers.set("task:complete", onTaskComplete as (...args: unknown[]) => void);
+    this._boundHandlers.set("task:failed", onTaskFailed as (...args: unknown[]) => void);
 
     // Log only safe fields — public key is derived, not the secret
     console.log(` PayFiAgent initialised`);
@@ -72,9 +106,41 @@ export class PayFiAgent {
     console.log(`   Spending limit : ${config.AGENT_SPENDING_LIMIT} ${config.X402_ASSET_CODE}`);
   }
 
+  /**
+   * Detach all registered event listeners and release internal resources.
+   *
+   * Must be called by the lifecycle manager when an agent instance is
+   * decommissioned or stopped. Failure to call destroy() prevents the garbage
+   * collector from reclaiming this instance because EventEmitter holds a strong
+   * reference to every registered callback closure.
+   *
+   * Usage:
+   *   const agent = new PayFiAgent();
+   *   // ... use agent ...
+   *   agent.destroy(); // call when decommissioning
+   */
+  destroy(): void {
+    for (const [event, handler] of this._boundHandlers) {
+      this.off(event, handler);
+    }
+    this._boundHandlers.clear();
+    // Remove any listeners added externally after construction
+    this.removeAllListeners();
+    console.log(`🔴 [PayFiAgent] Destroyed — all event listeners removed.`);
+  }
+
   /** Dispatch a task to the correct tool */
   async run(task: AgentTask): Promise<AgentResult> {
-    console.log(`\n [Agent] Running task: ${task.type}`);
+    if (this.isDraining) {
+      return {
+        success: false,
+        taskType: task.type,
+        error: "Agent is shutting down — task rejected",
+      };
+    }
+
+    this.activeTasks++;
+    console.log(`\n🚀 [Agent] Running task: ${task.type}`);
     try {
       let data: unknown;
 
@@ -101,14 +167,18 @@ export class PayFiAgent {
           throw new Error(`Unknown task type: ${(task as AgentTask).type}`);
       }
 
-      console.log(` [Agent] Task completed: ${task.type}`);
-      return { success: true, taskType: task.type, data };
+      console.log(`✅ [Agent] Task completed: ${task.type}`);
+      const result: AgentResult = { success: true, taskType: task.type, data };
+      this.emit("task:complete", result);
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Redact anything that looks like a secret key before logging
       const safe = message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
-      console.error(` [Agent] Task failed: ${task.type} — ${safe}`);
-      return { success: false, taskType: task.type, error: safe };
+      console.error(`❌ [Agent] Task failed: ${task.type} — ${safe}`);
+      const result: AgentResult = { success: false, taskType: task.type, error: safe };
+      this.emit("task:failed", result);
+      return result;
     }
   }
 }

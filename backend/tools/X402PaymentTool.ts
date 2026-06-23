@@ -38,25 +38,9 @@ export class X402PaymentTool {
   private keypair: Keypair;
   private horizonServer: Horizon.Server;
 
-  constructor(keypairOrSecret?: Keypair | string, paymentToolOverride?: any) {
-    if (keypairOrSecret instanceof Keypair) {
-      this.keypair = keypairOrSecret;
-    } else if (typeof keypairOrSecret === "string") {
-      this.keypair = Keypair.fromSecret(keypairOrSecret);
-    } else {
-      this.keypair = config.agentKeypair();
-    }
-
-    if (paymentToolOverride) {
-      this.paymentTool = paymentToolOverride;
-    } else {
-      try {
-        this.paymentTool = new (StellarPaymentTool as any)(this.keypair);
-      } catch (_) {
-        this.paymentTool = (StellarPaymentTool as any)(this.keypair);
-      }
-    }
-    this.horizonServer = new Horizon.Server(config.HORIZON_URL);
+  constructor(secretKey: string = config.agentKeypair().secret()) {
+    this.keypair = Keypair.fromSecret(secretKey);
+    this.paymentTool = new StellarPaymentTool(secretKey);
   }
 
   async respond(rawChallenge: unknown): Promise<X402PaymentProof> {
@@ -72,7 +56,8 @@ export class X402PaymentTool {
       assetCode: challenge.assetCode,
       assetIssuer:
         challenge.assetCode === "XLM" ? undefined : challenge.assetIssuer,
-      memo: challenge.nonce.slice(0, 28),
+      // SPEC: memo = SHA-256(nonce)[0:28 hex chars]; resource server must apply the same derivation to verify.
+      memo: hash(Buffer.from(challenge.nonce)).toString("hex").slice(0, 28),
     });
 
     return {

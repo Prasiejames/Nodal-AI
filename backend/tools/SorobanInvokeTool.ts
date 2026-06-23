@@ -81,14 +81,8 @@ export class SorobanInvokeTool {
   private keypair: Keypair;
   private networkPassphrase: string;
 
-  constructor(keypairOrSecret?: Keypair | string) {
-    if (keypairOrSecret instanceof Keypair) {
-      this.keypair = keypairOrSecret;
-    } else if (typeof keypairOrSecret === 'string') {
-      this.keypair = Keypair.fromSecret(keypairOrSecret);
-    } else {
-      this.keypair = config.agentKeypair();
-    }
+  constructor(secretKey: string = config.agentKeypair().secret()) {
+    this.keypair = Keypair.fromSecret(secretKey);
     this.networkPassphrase =
       config.STELLAR_NETWORK === "mainnet"
         ? Networks.PUBLIC
@@ -222,7 +216,7 @@ export class SorobanInvokeTool {
   private async pollForConfirmation(
     hash: string,
     maxAttempts = 10,
-    intervalMs = 2000
+    intervalMs = config.RETRY_DELAY_MS * 2
   ): Promise<{ txHash: string }> {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, intervalMs));

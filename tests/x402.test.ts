@@ -23,7 +23,6 @@ import { X402PaymentTool } from "../backend/tools/X402PaymentTool";
 import { StellarPaymentTool } from "../backend/tools/StellarPaymentTool";
 
 vi.mock("../backend/config", () => {
-  const { Keypair } = require("@stellar/stellar-sdk");
   const kp = Keypair.random();
   return {
     config: {

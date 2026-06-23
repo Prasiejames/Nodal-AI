@@ -25,7 +25,6 @@ vi.mock("../backend/rpc_client", () => ({
 
 // ─── Mock config — isolate from real .env ─────────────────────────────────────
 vi.mock("../backend/config", () => {
-  const { Keypair } = require("@stellar/stellar-sdk");
   const kp = Keypair.random();
   return {
     config: {

@@ -132,11 +132,11 @@ class SorobanInvokeTool {
             .addOperation(contract.call(input.method, ...input.args))
             .setTimeout(30)
             .build();
-        console.log(`🔍 [SorobanInvokeTool] Simulating ${input.method} on ${input.contractId}...`);
+        console.log(` [SorobanInvokeTool] Simulating ${input.method} on ${input.contractId}...`);
         // 4. MANDATORY simulate step — throws on simulation failure
         const preparedTx = await (0, rpc_client_1.prepareSorobanTx)(tx);
         if (input.simulateOnly) {
-            console.log(`✅ [SorobanInvokeTool] Simulation passed (dry-run, not broadcasting).`);
+            console.log(`[SorobanInvokeTool] Simulation passed (dry-run, not broadcasting).`);
             return { simulationResult: preparedTx };
         }
         // 5. Sign prepared transaction
@@ -158,8 +158,8 @@ class SorobanInvokeTool {
      *
      * ```
      * NOT_FOUND ──(each attempt)──► NOT_FOUND   (keep polling)
-     *                            └─► SUCCESS    (return txHash) ✅
-     *                            └─► FAILED     (throw Error)   ❌
+     *                            └─► SUCCESS    (return txHash)
+     *                            └─► FAILED     (throw Error)
      * ```
      *
      * The loop exits early on `SUCCESS` or `FAILED`. If neither terminal state is
@@ -180,13 +180,13 @@ class SorobanInvokeTool {
             await new Promise((r) => setTimeout(r, intervalMs));
             const status = await rpc_client_1.sorobanServer.getTransaction(hash);
             if (status.status === "SUCCESS") {
-                console.log(`✅ [SorobanInvokeTool] Transaction confirmed: ${hash}`);
+                console.log(` [SorobanInvokeTool] Transaction confirmed: ${hash}`);
                 return { txHash: hash };
             }
             if (status.status === "FAILED") {
                 throw new Error(`Soroban transaction failed on-chain: ${hash}`);
             }
-            console.log(`⏳ [SorobanInvokeTool] Polling... attempt ${i + 1}/${maxAttempts}`);
+            console.log(`[SorobanInvokeTool] Polling... attempt ${i + 1}/${maxAttempts}`);
         }
         throw new Error(`Soroban transaction not confirmed within polling window: ${hash}`);
     }

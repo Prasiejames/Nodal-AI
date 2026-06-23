@@ -21,7 +21,7 @@ async function withRetry(fn, retries = config_1.config.MAX_RETRIES, delayMs = co
         }
         catch (err) {
             lastErr = err;
-            console.warn(`⚠️  Attempt ${attempt}/${retries} failed:`, err.message);
+            console.warn(`  Attempt ${attempt}/${retries} failed:`, err.message);
             if (attempt < retries) {
                 await new Promise((r) => setTimeout(r, delayMs * attempt)); // exponential back-off
             }

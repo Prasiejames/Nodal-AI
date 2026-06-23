@@ -43,7 +43,7 @@ class PayFiAgent {
         this.sorobanTool = new SorobanInvokeTool_1.SorobanInvokeTool(keypair);
         this.x402Tool = new X402PaymentTool_1.X402PaymentTool(keypair);
         // Log only safe fields — public key is derived, not the secret
-        console.log(`🤖 PayFiAgent initialised`);
+        console.log(` PayFiAgent initialised`);
         console.log(`   Network        : ${config_1.config.STELLAR_NETWORK}`);
         console.log(`   Horizon        : ${config_1.config.HORIZON_URL}`);
         console.log(`   Soroban        : ${config_1.config.SOROBAN_RPC_URL}`);
@@ -52,7 +52,7 @@ class PayFiAgent {
     }
     /** Dispatch a task to the correct tool */
     async run(task) {
-        console.log(`\n🚀 [Agent] Running task: ${task.type}`);
+        console.log(`\n [Agent] Running task: ${task.type}`);
         try {
             let data;
             switch (task.type) {
@@ -74,14 +74,14 @@ class PayFiAgent {
                 default:
                     throw new Error(`Unknown task type: ${task.type}`);
             }
-            console.log(`✅ [Agent] Task completed: ${task.type}`);
+            console.log(` [Agent] Task completed: ${task.type}`);
             return { success: true, taskType: task.type, data };
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             // Redact anything that looks like a secret key before logging
             const safe = message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
-            console.error(`❌ [Agent] Task failed: ${task.type} — ${safe}`);
+            console.error(` [Agent] Task failed: ${task.type} — ${safe}`);
             return { success: false, taskType: task.type, error: safe };
         }
     }

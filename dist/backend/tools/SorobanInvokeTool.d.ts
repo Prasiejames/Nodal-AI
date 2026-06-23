@@ -118,8 +118,8 @@ export declare class SorobanInvokeTool {
      *
      * ```
      * NOT_FOUND ──(each attempt)──► NOT_FOUND   (keep polling)
-     *                            └─► SUCCESS    (return txHash) ✅
-     *                            └─► FAILED     (throw Error)   ❌
+     *                            └─► SUCCESS    (return txHash)
+     *                            └─► FAILED     (throw Error)
      * ```
      *
      * The loop exits early on `SUCCESS` or `FAILED`. If neither terminal state is

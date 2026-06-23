@@ -25,7 +25,7 @@ async function withRetry<T>(
       return await fn();
     } catch (err) {
       lastErr = err;
-      console.warn(`⚠️  Attempt ${attempt}/${retries} failed:`, (err as Error).message);
+      console.warn(`  Attempt ${attempt}/${retries} failed:`, (err as Error).message);
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, delayMs * attempt)); // exponential back-off
       }

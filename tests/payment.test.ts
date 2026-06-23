@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Keypair } from "@stellar/stellar-sdk";
 import { StellarPaymentTool } from "../backend/tools/StellarPaymentTool";
 import * as rpcClient from "../backend/rpc_client";
 
@@ -70,7 +71,9 @@ describe("StellarPaymentTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tool = new StellarPaymentTool(TEST_SECRET);
+    tool = new StellarPaymentTool();
+    // Default: return a minimal valid account for TransactionBuilder
+    vi.mocked(rpcClient.loadAccount).mockResolvedValue(makeMockAccount(tool.publicKey) as any);
   });
 
   afterEach(() => {

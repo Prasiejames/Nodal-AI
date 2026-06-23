@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Keypair } from "@stellar/stellar-sdk";
 import { SorobanInvokeTool } from "../backend/tools/SorobanInvokeTool";
 import * as rpcClient from "../backend/rpc_client";
 
@@ -66,7 +67,7 @@ describe("SorobanInvokeTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tool = new SorobanInvokeTool(TEST_SECRET);
+    tool = new SorobanInvokeTool();
   });
 
   afterEach(() => {

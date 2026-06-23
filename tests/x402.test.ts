@@ -52,6 +52,7 @@ const VALID_CHALLENGE = {
 
 describe("X402PaymentTool", () => {
   let tool: X402PaymentTool;
+  let mockPaymentTool: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -159,7 +160,6 @@ describe("X402PaymentTool", () => {
     it("embeds nonce in memo as SHA-256 fingerprint (28 hex chars)", async () => {
       await tool.respond(VALID_CHALLENGE);
 
-      const mockPaymentTool = vi.mocked(StellarPaymentTool).mock.results[0].value;
       const callArg = mockPaymentTool.execute.mock.calls[0][0] as any;
 
       const expectedMemo = hash(Buffer.from(VALID_CHALLENGE.nonce)).toString("hex").slice(0, 28);
@@ -170,7 +170,6 @@ describe("X402PaymentTool", () => {
     it("delegates to StellarPaymentTool with correct destination and amount", async () => {
       await tool.respond(VALID_CHALLENGE);
 
-      const mockPaymentTool = vi.mocked(StellarPaymentTool).mock.results[0].value;
       expect(mockPaymentTool.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           destination: VALID_CHALLENGE.payTo,
@@ -184,7 +183,6 @@ describe("X402PaymentTool", () => {
     it("omits assetIssuer for XLM payments", async () => {
       await tool.respond({ ...VALID_CHALLENGE, assetCode: "XLM" });
 
-      const mockPaymentTool = vi.mocked(StellarPaymentTool).mock.results[0].value;
       const callArg = mockPaymentTool.execute.mock.calls[0][0] as any;
       expect(callArg.assetIssuer).toBeUndefined();
     });
@@ -192,7 +190,6 @@ describe("X402PaymentTool", () => {
     it("calls StellarPaymentTool.execute exactly once per challenge", async () => {
       await tool.respond(VALID_CHALLENGE);
 
-      const mockPaymentTool = vi.mocked(StellarPaymentTool).mock.results[0].value;
       expect(mockPaymentTool.execute).toHaveBeenCalledOnce();
     });
   });
@@ -201,7 +198,7 @@ describe("X402PaymentTool", () => {
 
   describe("Payment failure propagation", () => {
     function getMockExecute() {
-      return vi.mocked(StellarPaymentTool).mock.results[0].value.execute as ReturnType<typeof vi.fn>;
+      return mockPaymentTool.execute as ReturnType<typeof vi.fn>;
     }
 
     it("propagates insufficient funds from underlying payment", async () => {

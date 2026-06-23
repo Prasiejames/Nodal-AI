@@ -1,18 +1,8 @@
 /**
  * backend/tools/X402PaymentTool.ts
  * x402 machine-to-machine PayFi payment tool.
- *
- * The x402 standard wraps a payment claim in a structured envelope
- * that downstream services can verify without trusting the agent.
- *
- * Flow:
- *  1. Agent receives a payment request (x402 challenge)
- *  2. Tool validates the challenge and amount
- *  3. Constructs a signed Stellar payment
- *  4. Returns an x402-compliant payment proof
  */
 import { z } from "zod";
-/** Incoming payment challenge from a resource server */
 export declare const X402ChallengeSchema: z.ZodObject<{
     resource: z.ZodString;
     amount: z.ZodString;
@@ -39,7 +29,6 @@ export declare const X402ChallengeSchema: z.ZodObject<{
     assetIssuer?: string | undefined;
 }>;
 export type X402Challenge = z.infer<typeof X402ChallengeSchema>;
-/** Payment proof returned to the resource server */
 export interface X402PaymentProof {
     protocol: "x402";
     network: string;
@@ -57,5 +46,7 @@ export declare class X402PaymentTool {
      * Returns a proof object the resource server can verify on Horizon.
      */
     respond(rawChallenge: unknown): Promise<X402PaymentProof>;
+    verify(proof: X402PaymentProof, originalChallenge: X402Challenge): Promise<void>;
+    private extractOp;
 }
 //# sourceMappingURL=X402PaymentTool.d.ts.map

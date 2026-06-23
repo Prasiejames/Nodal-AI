@@ -2,15 +2,6 @@
 /**
  * backend/tools/X402PaymentTool.ts
  * x402 machine-to-machine PayFi payment tool.
- *
- * The x402 standard wraps a payment claim in a structured envelope
- * that downstream services can verify without trusting the agent.
- *
- * Flow:
- *  1. Agent receives a payment request (x402 challenge)
- *  2. Tool validates the challenge and amount
- *  3. Constructs a signed Stellar payment
- *  4. Returns an x402-compliant payment proof
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.X402PaymentTool = exports.X402ChallengeSchema = void 0;
@@ -19,7 +10,6 @@ const zod_1 = require("zod");
 const config_1 = require("../config");
 const StellarPaymentTool_1 = require("./StellarPaymentTool");
 // ─── x402 schemas ────────────────────────────────────────────────────────────
-/** Incoming payment challenge from a resource server */
 exports.X402ChallengeSchema = zod_1.z.object({
     resource: zod_1.z.string().url("Must be a valid resource URL"),
     amount: zod_1.z.string(),
@@ -37,22 +27,11 @@ class X402PaymentTool {
         this.keypair = stellar_sdk_1.Keypair.fromSecret(secretKey);
         this.paymentTool = new StellarPaymentTool_1.StellarPaymentTool(secretKey);
     }
-    /**
-     * Respond to an x402 payment challenge.
-     * Returns a proof object the resource server can verify on Horizon.
-     */
     async respond(rawChallenge) {
-        // 1. Validate challenge
         const challenge = exports.X402ChallengeSchema.parse(rawChallenge);
-        // 2. Reject expired challenges
         if (new Date(challenge.expiresAt) <= new Date()) {
             throw new Error(`x402 challenge expired at ${challenge.expiresAt}`);
         }
-        console.log(`💳 [X402PaymentTool] Responding to x402 challenge`);
-        console.log(`   Resource : ${challenge.resource}`);
-        console.log(`   Amount   : ${challenge.amount} ${challenge.assetCode}`);
-        console.log(`   Nonce    : ${challenge.nonce}`);
-        // 3. Execute payment using StellarPaymentTool (includes simulation)
         const { txHash } = await this.paymentTool.execute({
             destination: challenge.payTo,
             amount: challenge.amount,
@@ -61,8 +40,7 @@ class X402PaymentTool {
             // SPEC: memo = SHA-256(nonce)[0:28 hex chars]; resource server must apply the same derivation to verify.
             memo: (0, stellar_sdk_1.hash)(Buffer.from(challenge.nonce)).toString("hex").slice(0, 28),
         });
-        // 4. Build proof
-        const proof = {
+        return {
             protocol: "x402",
             network: config_1.config.STELLAR_NETWORK,
             txHash,
@@ -70,8 +48,45 @@ class X402PaymentTool {
             payer: this.keypair.publicKey(),
             signedAt: new Date().toISOString(),
         };
-        console.log(`✅ [X402PaymentTool] Payment proof issued. txHash: ${txHash}`);
-        return proof;
+    }
+    async verify(proof, originalChallenge) {
+        const tx = await this.horizonServer
+            .transactions()
+            .transaction(proof.txHash)
+            .call();
+        const ops = await this.horizonServer
+            .operations()
+            .forTransaction(proof.txHash)
+            .call();
+        const op = ops.records?.[0];
+        if (!op) {
+            throw new Error("x402 verification failed: missing operation");
+        }
+        const parsed = this.extractOp(op);
+        if (parsed.to !== originalChallenge.payTo) {
+            throw new Error("x402 verification failed: destination mismatch");
+        }
+        if (parsed.amount !== originalChallenge.amount) {
+            throw new Error("x402 verification failed: amount mismatch");
+        }
+        if (parsed.assetCode !== originalChallenge.assetCode) {
+            throw new Error("x402 verification failed: asset mismatch");
+        }
+        const expectedMemo = originalChallenge.nonce.slice(0, 28);
+        if (tx.memo !== expectedMemo) {
+            throw new Error("x402 verification failed: nonce mismatch");
+        }
+        if (parsed.from !== proof.payer) {
+            throw new Error("x402 verification failed: payer mismatch");
+        }
+    }
+    extractOp(op) {
+        return {
+            to: op.to || op.destination,
+            amount: op.amount,
+            assetCode: op.asset_code || op.asset?.code,
+            from: op.from || op.source_account,
+        };
     }
 }
 exports.X402PaymentTool = X402PaymentTool;

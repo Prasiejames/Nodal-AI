@@ -48,15 +48,9 @@ export class X402PaymentTool {
   private paymentTool: StellarPaymentTool;
   private keypair: Keypair;
 
-  constructor(keypairOrSecret?: Keypair | string) {
-    if (keypairOrSecret instanceof Keypair) {
-      this.keypair = keypairOrSecret;
-    } else if (typeof keypairOrSecret === 'string') {
-      this.keypair = Keypair.fromSecret(keypairOrSecret);
-    } else {
-      this.keypair = config.agentKeypair();
-    }
-    this.paymentTool = new StellarPaymentTool(this.keypair);
+  constructor(secretKey: string = config.agentKeypair().secret()) {
+    this.keypair = Keypair.fromSecret(secretKey);
+    this.paymentTool = new StellarPaymentTool(secretKey);
   }
 
   /**
@@ -84,7 +78,8 @@ export class X402PaymentTool {
       assetCode: challenge.assetCode,
       assetIssuer:
         challenge.assetCode === "XLM" ? undefined : challenge.assetIssuer,
-      memo: challenge.nonce.slice(0, 28), // embed nonce in memo for auditability
+      // SPEC: memo = SHA-256(nonce)[0:28 hex chars]; resource server must apply the same derivation to verify.
+      memo: hash(Buffer.from(challenge.nonce)).toString("hex").slice(0, 28),
     });
 
     // 4. Build proof

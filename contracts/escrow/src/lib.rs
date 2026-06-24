@@ -35,18 +35,17 @@ pub enum DataKey {
     Released,
 }
 
-// ─── Contract States ──────────────────────────────────────────────────────────
+// ─── Escrow State ─────────────────────────────────────────────────────────────
 
-/// Represents the lifecycle states of the escrow contract.
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EscrowState {
-    /// State before the escrow is initialized (no fields set).
-    Uninitialized = 0,
-    /// Active state after initialization, prior to release or refund.
-    Active = 1,
-    /// Final settled state after funds are either released or refunded.
-    Settled = 2,
+pub struct EscrowState {
+    pub depositor: Address,
+    pub recipient: Address,
+    pub arbiter: Address,
+    pub token: Address,
+    pub amount: i128,
+    pub expiry: u64,
+    pub released: bool,
 }
 
 // ─── Contract Errors ──────────────────────────────────────────────────────────
@@ -57,18 +56,20 @@ pub enum EscrowState {
 pub enum EscrowError {
     /// The escrow contract is already initialised.
     AlreadyInitialized = 1,
-    /// The transfer amount must be positive.
-    AmountNotPositive = 2,
-    /// The expiry timestamp must be in the future.
-    ExpiryNotInFuture = 3,
+    /// The funds have already been released or refunded.
+    AlreadyReleased = 2,
+    /// The escrow has not yet expired.
+    NotExpired = 3,
     /// The caller is not the authorized arbiter.
     NotArbiter = 4,
     /// The caller is not the authorized depositor.
     NotDepositor = 5,
-    /// The escrow has not yet expired.
-    NotExpired = 6,
-    /// The funds have already been released or refunded.
-    AlreadySettled = 7,
+    /// The transfer amount must be positive.
+    InvalidAmount = 6,
+    /// The expiry timestamp must be in the future.
+    InvalidExpiry = 7,
+    /// The escrow has not been initialized yet.
+    NotInitialized = 8,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -91,8 +92,8 @@ impl EscrowContract {
     ///
     /// # Panics
     /// * `AlreadyInitialized` - If the escrow has already been initialised.
-    /// * `AmountNotPositive` - If amount is not positive.
-    /// * `ExpiryNotInFuture` - If expiry is not in the future.
+    /// * `InvalidAmount` - If amount is not positive.
+    /// * `InvalidExpiry` - If expiry is not in the future.
     ///
     /// # Return Value
     /// None.
@@ -113,10 +114,10 @@ impl EscrowContract {
         depositor.require_auth();
 
         if amount <= 0 {
-            panic_with_error!(&env, EscrowError::AmountNotPositive);
+            panic_with_error!(&env, EscrowError::InvalidAmount);
         }
         if expiry <= env.ledger().timestamp() {
-            panic_with_error!(&env, EscrowError::ExpiryNotInFuture);
+            panic_with_error!(&env, EscrowError::InvalidExpiry);
         }
 
         // Pull funds from depositor
@@ -145,31 +146,47 @@ impl EscrowContract {
         );
     }
 
-    /// Release funds to the recipient. Only callable by the arbiter.
+    /// Release funds to the recipient. Only callable by the stored arbiter.
     ///
     /// # Arguments
     /// * `env`     - The execution environment.
-    /// * `arbiter` - Trusted party who authorises release.
+    /// * `arbiter` - Must match the arbiter recorded at initialisation.
     ///
     /// # Panics
     /// * `NotArbiter` - If caller is not the stored arbiter.
-    /// * `AlreadySettled` - If funds have already been released or refunded.
+    /// * `AlreadyReleased` - If funds have already been released or refunded.
     ///
     /// # Return Value
     /// None.
     pub fn release(env: Env, arbiter: Address) {
-        arbiter.require_auth();
-
-        let stored_arbiter: Address = env.storage().instance().get(&DataKey::Arbiter).unwrap();
+        // Read stored arbiter first, then authenticate against it (fixes TOCTOU).
+        let stored_arbiter: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Arbiter)
+            .expect("escrow: state corrupted");
+        stored_arbiter.require_auth();
         if arbiter != stored_arbiter {
             panic_with_error!(&env, EscrowError::NotArbiter);
         }
 
         Self::assert_not_released(&env);
 
-        let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
-        let amount: i128 = env.storage().instance().get(&DataKey::Amount).unwrap();
-        let recipient: Address = env.storage().instance().get(&DataKey::Recipient).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("escrow: state corrupted");
+        let amount: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Amount)
+            .expect("escrow: state corrupted");
+        let recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Recipient)
+            .expect("escrow: state corrupted");
 
         env.storage().instance().set(&DataKey::Released, &true);
 
@@ -183,36 +200,52 @@ impl EscrowContract {
             .publish((Symbol::new(&env, "released"),), (recipient, amount));
     }
 
-    /// Refund depositor after expiry. Only callable by depositor.
+    /// Refund depositor after expiry. Only callable by the stored depositor.
     ///
     /// # Arguments
     /// * `env`       - The execution environment.
-    /// * `depositor` - Party locking the funds.
+    /// * `depositor` - Must match the depositor recorded at initialisation.
     ///
     /// # Panics
     /// * `NotDepositor` - If caller is not the stored depositor.
-    /// * `AlreadySettled` - If funds have already been released or refunded.
+    /// * `AlreadyReleased` - If funds have already been released or refunded.
     /// * `NotExpired` - If contract is not yet expired.
     ///
     /// # Return Value
     /// None.
     pub fn refund(env: Env, depositor: Address) {
-        depositor.require_auth();
-
-        let stored_depositor: Address = env.storage().instance().get(&DataKey::Depositor).unwrap();
+        // Read stored depositor first, then authenticate against it (fixes TOCTOU).
+        let stored_depositor: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Depositor)
+            .expect("escrow: state corrupted");
+        stored_depositor.require_auth();
         if depositor != stored_depositor {
             panic_with_error!(&env, EscrowError::NotDepositor);
         }
 
         Self::assert_not_released(&env);
 
-        let expiry: u64 = env.storage().instance().get(&DataKey::Expiry).unwrap();
+        let expiry: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Expiry)
+            .expect("escrow: state corrupted");
         if env.ledger().timestamp() < expiry {
             panic_with_error!(&env, EscrowError::NotExpired);
         }
 
-        let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
-        let amount: i128 = env.storage().instance().get(&DataKey::Amount).unwrap();
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("escrow: state corrupted");
+        let amount: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Amount)
+            .expect("escrow: state corrupted");
 
         env.storage().instance().set(&DataKey::Released, &true);
 
@@ -226,45 +259,61 @@ impl EscrowContract {
             .publish((Symbol::new(&env, "refunded"),), (depositor, amount));
     }
 
-    /// Get the current lifecycle state of the escrow.
+    /// Return a snapshot of all escrow fields. Panics if not yet initialized.
     ///
     /// # Arguments
     /// * `env` - The execution environment.
     ///
     /// # Panics
-    /// This function does not panic.
+    /// * `NotInitialized` - If called before `initialize`.
     ///
     /// # Return Value
-    /// Returns the current `EscrowState` (Uninitialized, Active, or Settled).
+    /// Returns `EscrowState` with all stored fields.
     pub fn get_state(env: Env) -> EscrowState {
         if !env.storage().instance().has(&DataKey::Depositor) {
-            EscrowState::Uninitialized
-        } else {
-            let released: bool = env
+            panic_with_error!(&env, EscrowError::NotInitialized);
+        }
+        EscrowState {
+            depositor: env
+                .storage()
+                .instance()
+                .get(&DataKey::Depositor)
+                .expect("escrow: state corrupted"),
+            recipient: env
+                .storage()
+                .instance()
+                .get(&DataKey::Recipient)
+                .expect("escrow: state corrupted"),
+            arbiter: env
+                .storage()
+                .instance()
+                .get(&DataKey::Arbiter)
+                .expect("escrow: state corrupted"),
+            token: env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .expect("escrow: state corrupted"),
+            amount: env
+                .storage()
+                .instance()
+                .get(&DataKey::Amount)
+                .expect("escrow: state corrupted"),
+            expiry: env
+                .storage()
+                .instance()
+                .get(&DataKey::Expiry)
+                .expect("escrow: state corrupted"),
+            released: env
                 .storage()
                 .instance()
                 .get(&DataKey::Released)
-                .unwrap_or(false);
-            if released {
-                EscrowState::Settled
-            } else {
-                EscrowState::Active
-            }
+                .unwrap_or(false),
         }
     }
 
     // ─── Internal helpers ────────────────────────────────────────────────────
 
-    /// Assert that the escrow funds have not yet been released or refunded.
-    ///
-    /// # Arguments
-    /// * `env` - The execution environment.
-    ///
-    /// # Panics
-    /// * `AlreadySettled` - If the funds have already been released or refunded.
-    ///
-    /// # Return Value
-    /// None.
     fn assert_not_released(env: &Env) {
         let released: bool = env
             .storage()
@@ -272,7 +321,7 @@ impl EscrowContract {
             .get(&DataKey::Released)
             .unwrap_or(false);
         if released {
-            panic_with_error!(env, EscrowError::AlreadySettled);
+            panic_with_error!(env, EscrowError::AlreadyReleased);
         }
     }
 }

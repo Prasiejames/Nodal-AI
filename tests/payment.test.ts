@@ -24,18 +24,24 @@ vi.mock("../backend/rpc_client", () => ({
 }));
 
 // ─── Mock config — isolate from real .env ─────────────────────────────────────
-vi.mock("../backend/config", () => ({
-  config: {
-    STELLAR_NETWORK: "testnet",
-    HORIZON_URL: "https://horizon-testnet.stellar.org",
-    SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
-    AGENT_SECRET_KEY: "SBZ7EYXHNB4WPPIWC5YAMH2U4L4QU6DKYXQWG4I55G6O4CLE4BBHCE73",
-    X402_ASSET_CODE: "USDC",
-    X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-    MAX_RETRIES: 3,
-    RETRY_DELAY_MS: 100, // fast in tests
-  },
-}));
+vi.mock("../backend/config", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Keypair } = require("@stellar/stellar-sdk");
+  const secret = "SBZ7EYXHNB4WPPIWC5YAMH2U4L4QU6DKYXQWG4I55G6O4CLE4BBHCE73";
+  return {
+    config: {
+      STELLAR_NETWORK: "testnet",
+      HORIZON_URL: "https://horizon-testnet.stellar.org",
+      SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
+      X402_ASSET_CODE: "USDC",
+      X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      MAX_RETRIES: 3,
+      RETRY_DELAY_MS: 100,
+      AGENT_PUBLIC_KEY: Keypair.fromSecret(secret).publicKey(),
+      agentKeypair: () => Keypair.fromSecret(secret),
+    },
+  };
+});
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -121,7 +127,7 @@ describe("StellarPaymentTool", () => {
           assetCode: "USDC",
           assetIssuer: undefined,
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow("Asset issuer is required for non-native asset USDC");
     });
 
     it("rejects a memo longer than 28 bytes", async () => {

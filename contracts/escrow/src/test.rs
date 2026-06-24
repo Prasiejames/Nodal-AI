@@ -19,7 +19,7 @@
 mod tests {
     extern crate std;
 
-    use crate::{EscrowContract, EscrowContractClient};
+    use crate::{EscrowContract, EscrowContractClient, EscrowState};
     use soroban_sdk::{
         testutils::{Address as _, Events, Ledger},
         token::{Client as TokenClient, StellarAssetClient},
@@ -423,5 +423,29 @@ mod tests {
         client.refund(&depositor);
         let events = env.events().all();
         assert!(std::format!("{:?}", events).contains("refunded"));
+    }
+
+    // 17. get_state returns correct fields after initialize
+    #[test]
+    fn test_get_state_after_initialize() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, _) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let expiry = env.ledger().timestamp() + EXPIRY_OFFSET;
+        client.initialize(&depositor, &recipient, &arbiter, &token_id, &500, &expiry);
+        let state: EscrowState = client.get_state();
+        assert_eq!(state.depositor, depositor);
+        assert_eq!(state.recipient, recipient);
+        assert_eq!(state.arbiter, arbiter);
+        assert_eq!(state.token, token_id);
+        assert_eq!(state.amount, 500);
+        assert_eq!(state.expiry, expiry);
+        assert_eq!(state.released, false);
     }
 }

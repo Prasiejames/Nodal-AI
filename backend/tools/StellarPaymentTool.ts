@@ -96,10 +96,15 @@ export class StellarPaymentTool {
     const input = PaymentInputSchema.parse(rawInput);
 
     // 2. Resolve asset
+    if (input.assetCode !== "XLM" && !input.assetIssuer) {
+      throw new Error(
+        `Asset issuer is required for non-native asset ${input.assetCode}`
+      );
+    }
     const asset =
       input.assetCode === "XLM"
         ? Asset.native()
-        : new Asset(input.assetCode, input.assetIssuer!);
+        : new Asset(input.assetCode, input.assetIssuer);
 
     // 3. Load source account (latest sequence number)
     const sourceAccount = await loadAccount(this.keypair.publicKey());

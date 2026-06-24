@@ -14,6 +14,9 @@ import { ZodError } from "zod";
 import { config } from "./config";
 import { logger } from "./logger";
 import { validateXDR } from "./types/xdr";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("rpc-client");
 
 // ─── Timeout error ────────────────────────────────────────────────────────────
 
@@ -21,6 +24,18 @@ export class TimeoutError extends Error {
   constructor(ms: number) {
     super(`Transaction Timeout: request did not complete within ${ms}ms`);
     this.name = "TimeoutError";
+  }
+}
+
+// ─── RPC error ────────────────────────────────────────────────────────────────
+
+/** Wraps the final error thrown after all retry attempts are exhausted. */
+export class StellarRPCError extends Error {
+  readonly cause: unknown;
+  constructor(message: string, cause: unknown) {
+    super(message);
+    this.name = "StellarRPCError";
+    this.cause = cause;
   }
 }
 
@@ -86,7 +101,10 @@ export async function withRetry<T>(
       }
     }
   }
-  throw lastErr;
+  throw new StellarRPCError(
+    `RPC call failed after ${retries} attempt${retries !== 1 ? "s" : ""}: ${(lastErr as Error).message}`,
+    lastErr
+  );
 }
 
 // ─── Horizon client ──────────────────────────────────────────────────────────

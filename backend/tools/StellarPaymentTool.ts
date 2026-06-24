@@ -20,6 +20,9 @@ import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../logger";
 import { loadAccount, submitTransaction } from "../rpc_client";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("stellar-payment");
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 

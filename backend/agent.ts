@@ -16,6 +16,9 @@ import { logger } from "./logger";
 import { StellarPaymentTool } from "./tools/StellarPaymentTool";
 import { SorobanInvokeTool } from "./tools/SorobanInvokeTool";
 import { X402PaymentTool } from "./tools/X402PaymentTool";
+import { createLogger, generateCorrelationId } from "./utils/logger";
+
+const log = createLogger("orchestrator");
 
 // ─── Task types ───────────────────────────────────────────────────────────────
 

@@ -7,6 +7,10 @@
 import * as http from "http";
 import { horizonServer } from "./rpc_client";
 import { db } from "./db/client";
+import { createLogger } from "./utils/logger";
+import { handleError } from "./middleware/error_handler";
+
+const log = createLogger("health-server");
 
 const HEALTH_PATH = "/health";
 
@@ -47,25 +51,36 @@ export function createHealthServer(port = 3001): http.Server {
       return;
     }
 
-    const [rpc, database] = await Promise.all([checkRpc(), checkDatabase()]);
+    try {
+      const [rpc, database] = await Promise.all([checkRpc(), checkDatabase()]);
 
-    const allUp = rpc === "up" && database === "up";
-    const statusCode = allUp ? 200 : 503;
-    const body: HealthResponse = {
-      status: allUp ? "ok" : "degraded",
-      components: { rpc, database },
-    };
+      const allUp = rpc === "up" && database === "up";
+      const statusCode = allUp ? 200 : 503;
+      const body: HealthResponse = {
+        status: allUp ? "ok" : "degraded",
+        components: { rpc, database },
+      };
 
-    const payload = JSON.stringify(body);
-    res.writeHead(statusCode, {
-      "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(payload),
-    });
-    res.end(payload);
+      const payload = JSON.stringify(body);
+      res.writeHead(statusCode, {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      });
+      res.end(payload);
+    } catch (err) {
+      const errorResponse = handleError(err);
+      log.error({ msg: "Unhandled request error", status: errorResponse.status, type: errorResponse.type });
+      const payload = JSON.stringify(errorResponse);
+      res.writeHead(errorResponse.status, {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      });
+      res.end(payload);
+    }
   });
 
   server.listen(port, () => {
-    console.log(`[HealthServer] Listening on :${port}${HEALTH_PATH}`);
+    log.info({ msg: "Health server listening", port, path: HEALTH_PATH });
   });
 
   return server;

@@ -12,6 +12,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { ZodError } from "zod";
 import { config } from "./config";
+import { logger } from "./logger";
 import { validateXDR } from "./types/xdr";
 
 // ─── Timeout error ────────────────────────────────────────────────────────────
@@ -70,7 +71,11 @@ export async function withRetry<T>(
         throw err;
       }
       lastErr = err;
-      console.warn(`  Attempt ${attempt}/${retries} failed:`, (err as Error).message);
+      logger.warn("Retry attempt failed", {
+        attempt,
+        maxRetries: retries,
+        error: (err as Error).message,
+      });
       if (attempt < retries) {
         // True exponential back-off: 1500 → 3000 → 6000 ms for RETRY_DELAY_MS=1500
         const exponential = delayMs * Math.pow(2, attempt - 1);

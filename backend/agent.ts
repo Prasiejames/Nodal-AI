@@ -12,6 +12,7 @@
 
 import { EventEmitter } from "events";
 import { config, MAINNET_SPENDING_CAP } from "./config";
+import { logger } from "./logger";
 import { StellarPaymentTool } from "./tools/StellarPaymentTool";
 import { SorobanInvokeTool } from "./tools/SorobanInvokeTool";
 import { X402PaymentTool } from "./tools/X402PaymentTool";
@@ -83,13 +84,13 @@ export class PayFiAgent extends EventEmitter {
     // ── Register event listeners — every registration is mirrored in destroy() ──
     const onError = (err: Error) => {
       const safe = err.message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
-      console.error(`❌ [PayFiAgent] Unhandled agent error: ${safe}`);
+      logger.error("Unhandled agent error", { error: safe });
     };
     const onTaskComplete = (result: AgentResult) => {
-      console.log(`✅ [PayFiAgent] Task complete event: ${result.taskType}`);
+      logger.info("Task complete", { taskType: result.taskType });
     };
     const onTaskFailed = (result: AgentResult) => {
-      console.warn(`⚠️  [PayFiAgent] Task failed event: ${result.taskType} — ${result.error}`);
+      logger.warn("Task failed", { taskType: result.taskType, error: result.error });
     };
 
     this.on("error", onError);
@@ -101,12 +102,14 @@ export class PayFiAgent extends EventEmitter {
     this._boundHandlers.set("task:failed", onTaskFailed as (...args: unknown[]) => void);
 
     // Log only safe fields — public key is derived, not the secret
-    console.log(` PayFiAgent initialised`);
-    console.log(`   Network        : ${config.STELLAR_NETWORK}`);
-    console.log(`   Horizon        : ${config.HORIZON_URL}`);
-    console.log(`   Soroban        : ${config.SOROBAN_RPC_URL}`);
-    console.log(`   Agent pubkey   : ${config.AGENT_PUBLIC_KEY}`);
-    console.log(`   Spending limit : ${config.AGENT_SPENDING_LIMIT} ${config.X402_ASSET_CODE}`);
+    logger.info("PayFiAgent initialised", {
+      network: config.STELLAR_NETWORK,
+      horizon: config.HORIZON_URL,
+      soroban: config.SOROBAN_RPC_URL,
+      agentPubkey: config.AGENT_PUBLIC_KEY,
+      spendingLimit: config.AGENT_SPENDING_LIMIT,
+      assetCode: config.X402_ASSET_CODE,
+    });
   }
 
   /**
@@ -129,17 +132,17 @@ export class PayFiAgent extends EventEmitter {
     this._boundHandlers.clear();
     // Remove any listeners added externally after construction
     this.removeAllListeners();
-    console.log(`🔴 [PayFiAgent] Destroyed — all event listeners removed.`);
+    logger.info("Agent destroyed — all event listeners removed");
   }
 
   drain(): void {
     this.isDraining = true;
-    console.log("🟠 [PayFiAgent] Draining — rejecting new tasks.");
+    logger.info("Agent draining — rejecting new tasks");
   }
 
   async waitForPendingTasks(): Promise<void> {
     if (this.activeTasks === 0) return;
-    console.log(`⏳ [PayFiAgent] Waiting for ${this.activeTasks} pending tasks to finish...`);
+    logger.info("Waiting for pending tasks to finish", { activeTasks: this.activeTasks });
     return new Promise<void>((resolve) => {
       const interval = setInterval(() => {
         if (this.activeTasks === 0) {
@@ -161,7 +164,7 @@ export class PayFiAgent extends EventEmitter {
     }
 
     this.activeTasks++;
-    console.log(`\n🚀 [Agent] Running task: ${task.type}`);
+    logger.info("Running task", { taskType: task.type });
     try {
       let data: unknown;
 
@@ -188,7 +191,7 @@ export class PayFiAgent extends EventEmitter {
           throw new Error(`Unknown task type: ${(task as AgentTask).type}`);
       }
 
-      console.log(`✅ [Agent] Task completed: ${task.type}`);
+      logger.info("Task completed", { taskType: task.type });
       const result: AgentResult = { success: true, taskType: task.type, data };
       this.emit("task:complete", result);
       return result;
@@ -196,7 +199,7 @@ export class PayFiAgent extends EventEmitter {
       const message = err instanceof Error ? err.message : String(err);
       // Redact anything that looks like a secret key before logging
       const safe = message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
-      console.error(`❌ [Agent] Task failed: ${task.type} — ${safe}`);
+      logger.error("Task failed", { taskType: task.type, error: safe });
       const result: AgentResult = { success: false, taskType: task.type, error: safe };
       this.emit("task:failed", result);
       return result;

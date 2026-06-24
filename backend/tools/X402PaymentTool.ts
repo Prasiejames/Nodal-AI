@@ -5,7 +5,9 @@
 
 import { Keypair, Horizon } from "@stellar/stellar-sdk";
 import { z } from "zod";
+import { createHash } from "crypto";
 import { config } from "../config";
+import { horizonServer } from "../rpc_client";
 import { StellarPaymentTool } from "./StellarPaymentTool";
 
 // ─── x402 schemas ────────────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ export class X402PaymentTool {
   constructor(secretKey: string = config.agentKeypair().secret()) {
     this.keypair = Keypair.fromSecret(secretKey);
     this.paymentTool = new StellarPaymentTool(secretKey);
-    this.horizonServer = new Horizon.Server(config.HORIZON_URL);
+    this.horizonServer = horizonServer;
   }
 
   async respond(rawChallenge: unknown): Promise<X402PaymentProof> {
@@ -57,8 +59,8 @@ export class X402PaymentTool {
       assetCode: challenge.assetCode,
       assetIssuer:
         challenge.assetCode === "XLM" ? undefined : challenge.assetIssuer,
-      // SPEC: memo = nonce[0:28 chars]; resource server must apply the same derivation to verify.
-      memo: challenge.nonce.slice(0, 28),
+      // SPEC: memo = SHA-256(nonce)[0:28 hex chars]; resource server must apply the same derivation to verify.
+      memo: createHash("sha256").update(challenge.nonce).digest("hex").slice(0, 28),
     });
 
     return {

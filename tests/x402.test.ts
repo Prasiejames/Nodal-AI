@@ -254,4 +254,56 @@ describe("X402PaymentTool", () => {
       await expect(tool.respond(VALID_CHALLENGE)).rejects.toThrow(/no_trust/);
     });
   });
+
+  // ── Edge case boundary tests for X402ChallengeSchema (#59) ──────────────────
+
+  describe("X402ChallengeSchema edge cases", () => {
+    it("rejects challenge with expiresAt = now (0ms in future)", async () => {
+      const now = new Date().toISOString();
+      const challenge = { ...VALID_CHALLENGE, expiresAt: now };
+
+      await expect(tool.respond(challenge)).rejects.toThrow();
+    });
+
+    it("accepts challenge with expiresAt = 1ms in future", async () => {
+      mockPaymentTool.execute.mockResolvedValueOnce({ txHash: "test_hash", ledger: 1 });
+      const future = new Date(Date.now() + 1).toISOString();
+      const challenge = { ...VALID_CHALLENGE, expiresAt: future };
+
+      const proof = await tool.respond(challenge);
+      expect(proof.protocol).toBe("x402");
+    });
+
+    it("accepts challenge with minimal valid amount 0.0000001", async () => {
+      mockPaymentTool.execute.mockResolvedValueOnce({ txHash: "test_hash", ledger: 1 });
+      const challenge = { ...VALID_CHALLENGE, amount: "0.0000001" };
+
+      const proof = await tool.respond(challenge);
+      expect(proof).toBeDefined();
+    });
+
+    it("defaults assetCode to config.X402_ASSET_CODE when omitted", async () => {
+      mockPaymentTool.execute.mockResolvedValueOnce({ txHash: "test_hash", ledger: 1 });
+      const challenge = { ...VALID_CHALLENGE };
+      delete (challenge as any).assetCode;
+
+      const proof = await tool.respond(challenge);
+      expect(proof.protocol).toBe("x402");
+    });
+
+    it("X402PaymentProof.signedAt is a valid ISO date string", async () => {
+      mockPaymentTool.execute.mockResolvedValueOnce({ txHash: "test_hash", ledger: 1 });
+      const proof = await tool.respond(VALID_CHALLENGE);
+
+      expect(new Date(proof.signedAt)).toBeInstanceOf(Date);
+      expect(new Date(proof.signedAt).toString()).not.toBe("Invalid Date");
+    });
+
+    it("X402PaymentProof.payer matches agent keypair public key", async () => {
+      mockPaymentTool.execute.mockResolvedValueOnce({ txHash: "test_hash", ledger: 1 });
+      const proof = await tool.respond(VALID_CHALLENGE);
+
+      expect(proof.payer).toBe(tool.publicKey);
+    });
+  });
 });

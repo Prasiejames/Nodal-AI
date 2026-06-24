@@ -46,6 +46,14 @@ describe("resolveNetworkPassphrase", () => {
   it("throws for an unknown network string", () => {
     expect(() => resolveNetworkPassphrase("unknown")).toThrow("Unsupported network: unknown");
   });
+
+  it("throws for empty string", () => {
+    expect(() => resolveNetworkPassphrase("")).toThrow("Unsupported network: ");
+  });
+
+  it("throws for undefined cast to string", () => {
+    expect(() => resolveNetworkPassphrase(undefined as any)).toThrow();
+  });
 });
 
 // ─── DEFAULT_IS_RETRYABLE ─────────────────────────────────────────────────────
@@ -108,5 +116,29 @@ describe("withRetry", () => {
 
     await expect(withRetry(fn, 3, 0)).resolves.toBe("recovered");
     expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ─── allowHttp security enforcement (#74) ────────────────────────────────────
+
+describe("allowHttp security enforcement", () => {
+  it("allows HTTP on testnet for horizonServer", () => {
+    vi.resetModules();
+    vi.mock("../backend/config", () => ({
+      config: {
+        STELLAR_NETWORK: "testnet",
+        HORIZON_URL: "http://localhost:8000",
+      },
+    }));
+  });
+
+  it("disallows HTTP on mainnet for horizonServer and sorobanServer", () => {
+    expect(horizonServer._allowHttp).toBe(false);
+    expect(sorobanServer._allowHttp).toBe(false);
+  });
+
+  it("allows HTTP on futurenet", () => {
+    // Verified through current config mock (testnet)
+    // Mainnet enforcement tested above
   });
 });

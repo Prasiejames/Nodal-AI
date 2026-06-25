@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
+import { formatValidationErrors } from "../backend/config";
 import { z } from "zod";
 
 vi.mock("child_process", async () => {
@@ -104,73 +105,59 @@ describe("config.ts startup validation", () => {
   });
 });
 
-describe("SpendingLimitSchema", () => {
-  const SpendingLimitSchema = z
-    .string()
-    .regex(
-      /^[1-9]\d*(\.\d{1,7})?$/,
-      "AGENT_SPENDING_LIMIT must be a positive decimal (e.g. '100' or '50.0000000')"
-    )
-    .default("100");
-
-  describe("accepted values", () => {
-    it("accepts single digit positive integer", () => {
-      const result = SpendingLimitSchema.safeParse("1");
-      expect(result.success).toBe(true);
-      expect(result.data).toBe("1");
-    });
-
-    it("accepts large integer", () => {
-      const result = SpendingLimitSchema.safeParse("9999999");
-      expect(result.success).toBe(true);
-    });
-
-    it("accepts decimal with 1 decimal place", () => {
-      const result = SpendingLimitSchema.safeParse("100.5");
-      expect(result.success).toBe(true);
-    });
-
-    it("accepts 7 decimal places (boundary)", () => {
-      const result = SpendingLimitSchema.safeParse("9999999.9999999");
-      expect(result.success).toBe(true);
-    });
-
-    it("accepts max decimal precision at single digit", () => {
-      const result = SpendingLimitSchema.safeParse("1.0000001");
-      expect(result.success).toBe(true);
-    });
-
-    it("defaults to '100' when undefined", () => {
-      const result = SpendingLimitSchema.safeParse(undefined);
-      expect(result.success).toBe(true);
-      expect(result.data).toBe("100");
-    });
+describe("formatValidationErrors", () => {
+  it("redacts a valid S-key in error message", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["test_field"],
+        message: "Invalid secret: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("[REDACTED]");
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
   });
 
-  describe("rejected values", () => {
-    it("rejects zero", () => {
-      const result = SpendingLimitSchema.safeParse("0");
-      expect(result.success).toBe(false);
-    });
+  it("does not modify error message without S-key", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["field"],
+        message: "This is a normal error",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("This is a normal error");
+  });
 
-    it("rejects negative number", () => {
-      const result = SpendingLimitSchema.safeParse("-1");
-      expect(result.success).toBe(false);
-    });
+  it("redacts S-key in path field", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT"],
+        message: "Invalid config",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("[REDACTED]");
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
+  });
 
-    it("rejects 8 decimal places", () => {
-      const result = SpendingLimitSchema.safeParse("0.00000001");
-      expect(result.success).toBe(false);
-    });
-
-    it("rejects non-numeric string", () => {
-      const result = SpendingLimitSchema.safeParse("abc");
-      expect(result.success).toBe(false);
-    });
-
-    it("rejects empty string", () => {
-      const result = SpendingLimitSchema.safeParse("");
-      expect(result.success).toBe(false);
-    });
+  it("redacts multiple S-keys in one message", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["field"],
+        message: "Key1: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT and Key2: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAY",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result.match(/\[REDACTED\]/g)).toHaveLength(2);
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
   });
 });

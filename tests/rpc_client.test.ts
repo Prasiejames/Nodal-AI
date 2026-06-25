@@ -118,6 +118,72 @@ describe("withRetry", () => {
     await expect(withRetry(fn, 3, 0)).resolves.toBe("recovered");
     expect(fn).toHaveBeenCalledTimes(2);
   });
+
+  // ── Exponential back-off timing with fake timers (#58) ──────────────────────
+
+  it("respects exponential delay progression [1500, 3000, 6000]", async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn()
+      .mockRejectedValueOnce(new Error("try1"))
+      .mockRejectedValueOnce(new Error("try2"))
+      .mockRejectedValueOnce(new Error("try3"))
+      .mockResolvedValue("success");
+
+    const promise = withRetry(fn, 4, 1500, DEFAULT_IS_RETRYABLE, 30000);
+    await vi.advanceTimersByTimeAsync(0); // Initial attempt
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1500); // First retry after 1500ms delay
+    expect(fn).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(3000); // Second retry after 3000ms delay
+    expect(fn).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(6000); // Third retry after 6000ms delay
+    expect(fn).toHaveBeenCalledTimes(4);
+
+    await expect(promise).resolves.toBe("success");
+    vi.useRealTimers();
+  });
+
+  it("respects maxDelayMs cap on exponential growth", async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValue("ok");
+
+    const promise = withRetry(fn, 3, 1500, DEFAULT_IS_RETRYABLE, 2000);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1500); // First retry
+    await vi.advanceTimersByTimeAsync(2000); // Second retry should be capped at 2000, not 3000
+
+    await expect(promise).resolves.toBe("ok");
+    vi.useRealTimers();
+  });
+
+  it("jitter does not cause delay to exceed maxDelayMs cap", async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn().mockResolvedValue("ok");
+    const startTime = Date.now();
+
+    // Jitter is ±20% of capped delay, so for cap of 1000: jitter max is 200
+    // Total max delay should not exceed 1000 + 200 = 1200
+    const promise = withRetry(fn, 1, 500, DEFAULT_IS_RETRYABLE, 1000);
+    await vi.advanceTimersByTimeAsync(1200);
+
+    await expect(promise).resolves.toBe("ok");
+    const elapsed = Date.now() - startTime;
+    expect(elapsed).toBeLessThanOrEqual(1200);
+    vi.useRealTimers();
+  });
+
+  it("last error is re-thrown after exhaustion with StellarRPCError", async () => {
+    const fn = vi.fn().mockRejectedValue(new Error("Service Unavailable"));
+
+    const err = await expect(withRetry(fn, 3, 0)).rejects.toThrow();
+    expect(err.name).toBe("StellarRPCError");
+    expect(err.message).toContain("RPC call failed after 3 attempts");
+  });
 });
 
 // ─── withTimeout ──────────────────────────────────────────────────────────────

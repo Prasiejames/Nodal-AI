@@ -21,7 +21,10 @@ export const X402ChallengeSchema = z.object({
   payTo: z.string().length(56, "Invalid payTo Stellar address"),
   nonce: z.string().uuid("Nonce must be a UUID v4"),
   expiresAt: z.string().datetime(),
-});
+}).refine(
+  (data) => data.assetCode === "XLM" || !!data.assetIssuer,
+  { message: "assetIssuer is required for non-XLM payments", path: ["assetIssuer"] }
+);
 
 export type X402Challenge = z.infer<typeof X402ChallengeSchema>;
 

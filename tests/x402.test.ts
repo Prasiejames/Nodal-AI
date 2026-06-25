@@ -95,6 +95,17 @@ describe("X402PaymentTool", () => {
       ).rejects.toThrow("Payment destination cannot be the agent's own address");
     });
 
+    it("rejects USDC payment when assetIssuer is empty", async () => {
+      await expect(
+        tool.respond({ ...VALID_CHALLENGE, assetCode: "USDC", assetIssuer: "" })
+      ).rejects.toThrow("assetIssuer is required for non-XLM payments");
+    });
+
+    it("accepts XLM payment without assetIssuer", async () => {
+      const proof = await tool.respond({ ...VALID_CHALLENGE, assetCode: "XLM", assetIssuer: "" });
+      expect(proof.txHash).toBeTruthy();
+    });
+
     it("rejects a missing resource URL", async () => {
       const { resource: _omit, ...noResource } = VALID_CHALLENGE;
       await expect(tool.respond(noResource)).rejects.toThrow();

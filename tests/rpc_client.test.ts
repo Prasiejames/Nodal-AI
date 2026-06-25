@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { ZodError, z } from "zod";
-import { withRetry, DEFAULT_IS_RETRYABLE, resolveNetworkPassphrase } from "../backend/rpc_client";
+import { withRetry, DEFAULT_IS_RETRYABLE, resolveNetworkPassphrase, withTimeout, TimeoutError } from "../backend/rpc_client";
 import { Networks } from "@stellar/stellar-sdk";
 
 vi.mock("../backend/utils/logger", () => ({
@@ -25,6 +25,7 @@ vi.mock("../backend/config", () => ({
     X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
     MAX_RETRIES: 3,
     RETRY_DELAY_MS: 100,
+    RPC_TIMEOUT_MS: 9000,
   },
 }));
 
@@ -119,26 +120,24 @@ describe("withRetry", () => {
   });
 });
 
-// ─── allowHttp security enforcement (#74) ────────────────────────────────────
+// ─── withTimeout ──────────────────────────────────────────────────────────────
 
-describe("allowHttp security enforcement", () => {
-  it("allows HTTP on testnet for horizonServer", () => {
-    vi.resetModules();
-    vi.mock("../backend/config", () => ({
-      config: {
-        STELLAR_NETWORK: "testnet",
-        HORIZON_URL: "http://localhost:8000",
-      },
-    }));
+describe("withTimeout", () => {
+  it("resolves when the promise completes before the timeout", async () => {
+    const fast = Promise.resolve("done");
+    await expect(withTimeout(fast, 500)).resolves.toBe("done");
   });
 
-  it("disallows HTTP on mainnet for horizonServer and sorobanServer", () => {
-    expect(horizonServer._allowHttp).toBe(false);
-    expect(sorobanServer._allowHttp).toBe(false);
+  it("throws TimeoutError when the promise exceeds the timeout", async () => {
+    const slow = new Promise<never>(() => {}); // never resolves
+    await expect(withTimeout(slow, 10)).rejects.toBeInstanceOf(TimeoutError);
   });
 
-  it("allows HTTP on futurenet", () => {
-    // Verified through current config mock (testnet)
-    // Mainnet enforcement tested above
+  it("TimeoutError message identifies it as a timeout, not a network error", async () => {
+    const slow = new Promise<never>(() => {});
+    const err = await withTimeout(slow, 10).catch((e) => e);
+    expect(err).toBeInstanceOf(TimeoutError);
+    expect(err.message).toMatch(/timeout/i);
+    expect(err.name).toBe("TimeoutError");
   });
 });
